@@ -1,5 +1,6 @@
 package org.jenkinsci.plugins.influxdb;
 
+import org.apache.log4j.Logger;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDBFactory;
 
@@ -11,6 +12,7 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
+import org.influxdb.dto.BatchPoints;
 import org.jenkinsci.plugins.influxdb.generators.CoberturaSerieGenerator;
 import org.jenkinsci.plugins.influxdb.generators.JenkinsBaseSerieGenerator;
 import org.jenkinsci.plugins.influxdb.generators.RobotFrameworkSerieGenerator;
@@ -28,6 +30,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class InfluxDbPublisher extends Notifier {
 
+    Logger log = Logger.getLogger(InfluxDbPublisher.class);
 
     @Extension
     public static final DescriptorImpl DESCRIPTOR = new DescriptorImpl();
@@ -40,18 +43,17 @@ public class InfluxDbPublisher extends Notifier {
 
     public InfluxDbPublisher(String server) {
         this.selectedServer = server;
-        System.out.println("Selected Server: " + server);
     }
 
     public String getSelectedServer() {
-        String ipTemp = selectedServer;
-        if (ipTemp == null) {
+        String tempSelectedServer = selectedServer;
+        if (tempSelectedServer == null) {
             Server[] servers = DESCRIPTOR.getServers();
             if (servers.length > 0) {
-                ipTemp = servers[0].getHost();
+                tempSelectedServer = servers[0].getHost();
             }
         }
-        return ipTemp;
+        return tempSelectedServer;
     }
 
     public void setSelectedServer(String server) {
@@ -123,26 +125,33 @@ public class InfluxDbPublisher extends Notifier {
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
 
+        log.info("Performing InfluxDb PostBuildAction");
+
         Server server = getServer();
         InfluxDB influxDB = openInfluxDb(server);
 
         JenkinsBaseSerieGenerator jGenerator = new JenkinsBaseSerieGenerator(build);
-        influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, jGenerator.generate());
+        BatchPoints jenkinsPoints = BatchPoints.database( server.getDatabaseName() ).points(jGenerator.generate(server.getSerieBaseName())).build();
+        influxDB.write(jenkinsPoints);
 
         CoberturaSerieGenerator cbGenerator = new CoberturaSerieGenerator(build);
         if(cbGenerator.hasReport()) {
-            influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, cbGenerator.generate());
+            BatchPoints coberturaPoints = BatchPoints.database( server.getDatabaseName() ).points(cbGenerator.generate(server.getSerieBaseName())).build();
+            influxDB.write(coberturaPoints);
         }
 
         SerieGenerator rfGenerator = new RobotFrameworkSerieGenerator(build);
         if(rfGenerator.hasReport()) {
-            influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, rfGenerator.generate());
+            BatchPoints coberturaPoints = BatchPoints.database( server.getDatabaseName() ).points(rfGenerator.generate(server.getSerieBaseName())).build();
+            influxDB.write(coberturaPoints);
         }
 
+        log.info("Done with InfluxDb PostBuildAction");
         return true;
     }
 
     private InfluxDB openInfluxDb(Server server) {
+        System.out.println("!!!! http://" + server.getHost() + ":" + server.getPort());
         return InfluxDBFactory.connect("http://" + server.getHost() + ":" + server.getPort(), server.getUser(), server.getPassword());
     }
 

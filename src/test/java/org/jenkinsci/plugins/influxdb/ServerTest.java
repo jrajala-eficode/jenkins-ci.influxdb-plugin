@@ -50,4 +50,10 @@ public class ServerTest {
         server.setPassword("pass");
         Assert.assertEquals("pass", server.getPassword());
     }
+
+    @Test
+    public void shouldAllowSettingSerieBaseName() {
+        server.setSerieBaseName("serie.foo.bar");
+        Assert.assertEquals("serie.foo.bar", server.getSerieBaseName());
+    }
 }

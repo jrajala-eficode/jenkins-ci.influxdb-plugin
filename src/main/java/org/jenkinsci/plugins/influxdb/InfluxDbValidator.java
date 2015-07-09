@@ -62,9 +62,8 @@ public class InfluxDbValidator {
      * @param baseQueueName
      * @return isDatabaseNamePresent
      */
-    public boolean isDatabaseNamePresent(String baseQueueName) {
-        return StringUtils.isNotBlank(baseQueueName);
+    public boolean isDatabaseNamePresent(String databaseName) {
+        return StringUtils.isNotBlank(databaseName);
     }
-
 
 }

@@ -37,8 +37,12 @@
             <f:password name="serverBinding.password"  value="${currentServer.password}"/>
           </f:entry>
 
-          <f:entry title="${%influxdb_database_name}" help="${helpURL}/influxdb_database_name.html" field="databaseName" >
+          <f:entry title="${%influxdb_database_name}" help="${helpURL}/influxdb_servers_adding_database_name.html" field="databaseName" >
             <f:textbox name="serverBinding.databaseName" value="${currentServer.databaseName}"  checkUrl="'${rootURL}/publisher/InfluxDbPublisher/checkDatabaseName?value='+escape(this.value)" />
+          </f:entry>
+
+          <f:entry title="${%influxdb_serie_base_name}" help="${helpURL}/influxdb_servers_adding_base_serie_name.html" field="serieBaseName" >
+            <f:textbox name="serverBinding.serieBaseName" value="${currentServer.serieBaseName}"  />
           </f:entry>
 
           <f:entry title="${%delete_current_server}" >

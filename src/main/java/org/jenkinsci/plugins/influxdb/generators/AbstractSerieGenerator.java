@@ -1,7 +1,7 @@
 package org.jenkinsci.plugins.influxdb.generators;
 
 import hudson.model.AbstractBuild;
-import org.influxdb.dto.Serie;
+import org.influxdb.dto.Point;
 
 import java.util.List;
 
@@ -10,16 +10,23 @@ import java.util.List;
  */
 public abstract class AbstractSerieGenerator implements  SerieGenerator {
 
-    public static final String PROJECT_NAME = "project_name";
+    protected AbstractBuild<?, ?> build;
     public static final String BUILD_NUMBER = "build_number";
+    public static final String BUILD_TIME = "build_time";
+    public static final String BUILD_DURATION = "build_duration";
+    protected String baseSerieName = "";
 
-    protected void addJenkinsProjectName(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(PROJECT_NAME);
-        values.add(build.getProject().getName());
+    protected String getProjectSerieName() {
+       return build.getProject().getFullName().replaceAll("/",".");
     }
 
-    protected void addJenkinsBuildNumber(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(BUILD_NUMBER);
-        values.add(build.getNumber());
+    protected String getBaseSerieName() {
+        StringBuilder serieName = new StringBuilder();
+
+        if(baseSerieName!=null)
+            serieName.append(baseSerieName.trim()+".");
+
+        serieName.append(getProjectSerieName()+".");
+        return serieName.toString();
     }
 }

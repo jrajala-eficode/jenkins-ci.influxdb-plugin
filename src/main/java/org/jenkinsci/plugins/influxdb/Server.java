@@ -23,13 +23,13 @@ public class Server {
 
     String databaseName;
 
+    String serieBaseName;
+
     public String getHost() {
         return host;
     }
 
-    public String getPort() {
-        return port;
-    }
+    public String getPort() { return port; }
 
     public String getDescription() {
         return description;
@@ -59,11 +59,9 @@ public class Server {
         this.description = description;
     }
 
-
     public void setPassword(String password) {
         this.password = password;
     }
-
 
     public void setUser(String user) {
         this.user = user;
@@ -72,4 +70,9 @@ public class Server {
     public void setDatabaseName(String databaseName) {
         this.databaseName = databaseName;
     }
+
+    public String getSerieBaseName() { return serieBaseName; }
+
+    public void setSerieBaseName(String serieBaseName) { this.serieBaseName = serieBaseName; }
+
 }

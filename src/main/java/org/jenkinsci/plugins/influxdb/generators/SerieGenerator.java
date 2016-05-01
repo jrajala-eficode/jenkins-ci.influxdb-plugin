@@ -1,15 +1,14 @@
 package org.jenkinsci.plugins.influxdb.generators;
 
-import hudson.model.AbstractBuild;
-import org.influxdb.dto.Serie;
+import org.influxdb.dto.Point;
 
 /**
  * Created by jrajala on 15.5.2015.
  */
 public interface SerieGenerator {
 
-    public boolean hasReport();
+    boolean hasReport();
 
-    public Serie[] generate();
+    Point[] generate();
 
 }

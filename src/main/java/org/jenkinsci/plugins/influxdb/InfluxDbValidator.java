@@ -35,7 +35,7 @@ public class InfluxDbValidator {
 
     /**
      * @param port
-     * @return whether port present 
+     * @return whether port present
      */
     public boolean isPortPresent(String port) {
         return port!=null && port.length() != 0;
@@ -56,9 +56,9 @@ public class InfluxDbValidator {
     public boolean isDescriptionTooLong(String description) {
         return description.length() > 100;
     }
-    
+
     /**
-     * 
+     *
      * @param baseQueueName
      * @return isDatabaseNamePresent
      */

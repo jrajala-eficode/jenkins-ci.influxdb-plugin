@@ -1,25 +1,31 @@
 package org.jenkinsci.plugins.influxdb.generators;
 
 import hudson.model.AbstractBuild;
-import org.influxdb.dto.Serie;
+import org.influxdb.dto.Point;
 
+import java.util.HashMap;
 import java.util.List;
+import java.io.PrintStream;
+
 
 /**
  * Created by jrajala on 15.5.2015.
  */
-public abstract class AbstractSerieGenerator implements  SerieGenerator {
+public abstract class AbstractSerieGenerator implements SerieGenerator {
 
     public static final String PROJECT_NAME = "project_name";
     public static final String BUILD_NUMBER = "build_number";
 
-    protected void addJenkinsProjectName(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(PROJECT_NAME);
-        values.add(build.getProject().getName());
+    protected final AbstractBuild<?, ?> build;
+    protected final PrintStream logger;
+
+    public AbstractSerieGenerator(AbstractBuild<?, ?> build, PrintStream logger) {
+        this.build = build;
+        this.logger = logger;
     }
 
-    protected void addJenkinsBuildNumber(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(BUILD_NUMBER);
-        values.add(build.getNumber());
+    protected void addJenkinsBaseInfo(Point.Builder pointBuilder) {
+        pointBuilder.field(PROJECT_NAME, build.getProject().getName());
+        pointBuilder.field(BUILD_NUMBER, build.getNumber());
     }
 }

@@ -1,93 +1,91 @@
 package org.jenkinsci.plugins.influxdb.generators;
 
+import hudson.model.Result;
 import hudson.model.AbstractBuild;
 import hudson.tasks.test.AbstractTestResultAction;
-import org.influxdb.dto.Serie;
+import org.influxdb.dto.Point;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.io.PrintStream;
 
 /**
  * Created by jrajala on 15.5.2015.
  */
 public class JenkinsBaseSerieGenerator extends AbstractSerieGenerator {
 
-    public static final String BUILD_TIME = "build_time";
+    public static final String BUILD_DURATION = "build_duration";
+    public static final String BUILD_RESULT = "build_result";
+    public static final String BUILD_RESULT_ORDINAL = "build_result_ordinal";
     public static final String BUILD_STATUS_MESSAGE = "build_status_message";
+    public static final String PROJECT_BUILD_STABILITY = "project_build_stability";
     public static final String PROJECT_BUILD_HEALTH = "project_build_health";
+    public static final String PROJECT_LAST_SUCCESSFUL = "last_successful_build";
+    public static final String PROJECT_LAST_STABLE = "last_stable_build";
     public static final String TESTS_FAILED = "tests_failed";
     public static final String TESTS_SKIPPED = "tests_skipped";
     public static final String TESTS_TOTAL = "tests_total";
 
-    private final AbstractBuild<?, ?> build;
-
-    public JenkinsBaseSerieGenerator(AbstractBuild<?, ?> build) {
-        this.build = build;
+    public JenkinsBaseSerieGenerator(AbstractBuild<?, ?> build, PrintStream logger) {
+        super(build, logger);
     }
 
     public boolean hasReport() {
         return true;
     }
 
-    public Serie[] generate() {
-        Serie.Builder builder = new Serie.Builder(getSerieName());
+    public Point[] generate() {
+        Point.Builder pointBuilder = Point.measurement(getSerieName())
+            .time(build.getTimeInMillis(), TimeUnit.MILLISECONDS);
 
-        List<String> columns = new ArrayList<String>();
-        List<Object> values = new ArrayList<Object>();
+        logger.println("Influxdb starting to generate basic report");
 
-        addJenkinsBuildNumber(build, columns, values);
-        addJenkinsProjectName(build, columns, values);
-        addBuildDuration(build, columns, values);
-        addBuildStatusSummaryMesssage(build, columns, values);
-        addProjectBuildHealth(build, columns, values);
+        addJenkinsBaseInfo(pointBuilder);
 
-        if(hasTestResults(build)) {
-            addTestsFailed(build, columns, values);
-            addTestsSkipped(build, columns, values);
-            addTestsTotal(build, columns, values);
+        pointBuilder.field(BUILD_DURATION, build.getDuration());
+        pointBuilder.field(BUILD_RESULT, build.getResult().toString());
+        pointBuilder.field(BUILD_RESULT_ORDINAL, build.getResult().ordinal);
+        pointBuilder.field(BUILD_STATUS_MESSAGE, build.getBuildStatusSummary().message);
+        pointBuilder.field(PROJECT_BUILD_STABILITY, build.getProject().getBuildHealth().getScore());
+        pointBuilder.field(PROJECT_BUILD_HEALTH, getBuildHealth());
+        pointBuilder.field(PROJECT_LAST_SUCCESSFUL, build.getProject().getLastSuccessfulBuild().getNumber());
+        pointBuilder.field(PROJECT_LAST_STABLE, build.getProject().getLastStableBuild().getNumber());
+
+        if(hasTestResults()) {
+            pointBuilder.field(TESTS_TOTAL, build.getAction(AbstractTestResultAction.class).getTotalCount());
+            pointBuilder.field(TESTS_FAILED, build.getAction(AbstractTestResultAction.class).getFailCount());
+            pointBuilder.field(TESTS_SKIPPED, build.getAction(AbstractTestResultAction.class).getSkipCount());
         }
 
-        return new Serie[] {builder.columns(columns.toArray(new String[columns.size()])).values(values.toArray()).build()};
+        logger.println("Influxdb basic report generation finished");
 
+        return new Point[]{pointBuilder.build()};
     }
 
-
-    private void addBuildDuration(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(BUILD_TIME);
-        values.add(build.getDuration());
-    }
-
-    private void addBuildStatusSummaryMesssage(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(BUILD_STATUS_MESSAGE);
-        values.add(build.getBuildStatusSummary().message);
-    }
-
-    private void addProjectBuildHealth(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        columnNames.add(PROJECT_BUILD_HEALTH);
-        values.add(build.getProject().getBuildHealth().getScore());
-    }
-
-    private boolean hasTestResults(AbstractBuild<?, ?> build) {
+    private boolean hasTestResults() {
         return build.getAction(AbstractTestResultAction.class) != null;
     }
 
-    private void addTestsTotal(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        values.add(build.getAction(AbstractTestResultAction.class).getTotalCount());
-        columnNames.add(TESTS_TOTAL);
-    }
+    /**
+     * Build health weihted by the status of the latest build. Guarranteed
+     * to be over 50 if the latest build succeeded, or below 50 if the latest
+     * build failed (including test failures).
+     **/
+    private int getBuildHealth() {
+        int projectBuildStability = build.getProject().getBuildHealth().getScore();
+        boolean buildFailed = build.getResult().isWorseThan(Result.UNSTABLE);
 
-    private void addTestsFailed(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        values.add(build.getAction(AbstractTestResultAction.class).getFailCount());
-        columnNames.add(TESTS_FAILED);
-    }
+        if (buildFailed == false && hasTestResults()) {
+            if (build.getAction(AbstractTestResultAction.class).getFailCount() > 0)
+                buildFailed = true;
+        }
 
-    private void addTestsSkipped(AbstractBuild<?, ?> build, List<String> columnNames, List<Object> values) {
-        values.add(build.getAction(AbstractTestResultAction.class).getSkipCount());
-        columnNames.add(TESTS_SKIPPED);
+        return (buildFailed) ? projectBuildStability / 2 : 50 + projectBuildStability / 2;
     }
 
     private String getSerieName() {
         return build.getProject().getName()+".jenkins";
     }
-
 }

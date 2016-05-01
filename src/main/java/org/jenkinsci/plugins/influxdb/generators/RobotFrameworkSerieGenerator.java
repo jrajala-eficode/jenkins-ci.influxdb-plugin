@@ -5,11 +5,11 @@ import hudson.plugins.robot.RobotBuildAction;
 import hudson.plugins.robot.model.RobotCaseResult;
 import hudson.plugins.robot.model.RobotResult;
 import hudson.plugins.robot.model.RobotSuiteResult;
-import org.influxdb.dto.Serie;
+import org.influxdb.dto.Point;
 
-import java.awt.*;
+import java.io.PrintStream;
 import java.util.*;
-import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by jrajala on 15.5.2015.
@@ -27,12 +27,16 @@ public class RobotFrameworkSerieGenerator extends AbstractSerieGenerator {
     public static final String RF_DURATION = "rf_duration";
     public static final String RF_SUITES = "rf_suites";
     public static final String RF_TESTCASES = "rf_testcases";
+    public static final String RF_CASE_NAME = "rf_case_name";
+    public static final String RF_CASE_SUITE = "rf_suite";
+    public static final String RF_TAG_NAME = "rf_tag";
+    public static final String RF_TAG_LIST = "rf_tag_list";
+    public static final String RF_SUITE_NAME = "rf_suite";
 
-    private final AbstractBuild<?, ?> build;
     private final Map<String, RobotTagResult> tagResults;
 
-    public RobotFrameworkSerieGenerator(AbstractBuild<?, ?> build) {
-        this.build = build;
+    public RobotFrameworkSerieGenerator(AbstractBuild<?, ?> build, PrintStream logger) {
+        super(build, logger);
         tagResults = new Hashtable<String, RobotTagResult>();
     }
 
@@ -41,94 +45,43 @@ public class RobotFrameworkSerieGenerator extends AbstractSerieGenerator {
         return robotBuildAction != null && robotBuildAction.getResult() != null;
     }
 
-    public Serie[] generate() {
+    public Point[] generate() {
         RobotBuildAction robotBuildAction = build.getAction(RobotBuildAction.class);
 
-        List<Serie> seriesList = new ArrayList<Serie>();
+        List<Point> seriesList = new ArrayList<Point>();
+
+        logger.println("Influxdb starting to generate Robot Framework report");
 
         seriesList.add(generateOverviewSerie(robotBuildAction));
         seriesList.addAll(generateSubSeries(robotBuildAction.getResult()));
 
-        return seriesList.toArray(new Serie[seriesList.size()]);
+        logger.println("Influxdb Robot Framework report generation finished");
+
+        return seriesList.toArray(new Point[seriesList.size()]);
     }
 
-    private Serie generateOverviewSerie(RobotBuildAction robotBuildAction) {
-        List<String> columns = new ArrayList<String>();
-        List<Object> values = new ArrayList<Object>();
+    private Point generateOverviewSerie(RobotBuildAction robotBuildAction) {
+        Point.Builder pointBuilder = Point.measurement(getSeriePrefix())
+            .time(build.getTimeInMillis(), TimeUnit.MILLISECONDS);
 
-        addJenkinsBuildNumber(build, columns, values);
-        addJenkinsProjectName(build, columns, values);
+        addJenkinsBaseInfo(pointBuilder);
 
-        addOverallFailCount(robotBuildAction, columns, values);
-        addOverallPassedCount(robotBuildAction, columns, values);
-        addOverallTotalCount(robotBuildAction, columns, values);
+        pointBuilder.field(RF_FAILED, robotBuildAction.getResult().getOverallFailed());
+        pointBuilder.field(RF_PASSED, robotBuildAction.getResult().getOverallPassed());
+        pointBuilder.field(RF_TOTAL, robotBuildAction.getResult().getOverallTotal());
+        pointBuilder.field(RF_CRITICAL_FAILED, robotBuildAction.getResult().getCriticalFailed());
+        pointBuilder.field(RF_CRITICAL_PASSED, robotBuildAction.getResult().getCriticalPassed());
+        pointBuilder.field(RF_CRITICAL_TOTAL, robotBuildAction.getResult().getCriticalTotal());
+        pointBuilder.field(RF_CRITICAL_PASS_PERCENTAGE, robotBuildAction.getCriticalPassPercentage());
+        pointBuilder.field(RF_PASS_PERCENTAGE, robotBuildAction.getOverallPassPercentage());
+        pointBuilder.field(RF_DURATION, robotBuildAction.getResult().getDuration());
+        pointBuilder.field(RF_SUITES, robotBuildAction.getResult().getAllSuites().size());
 
-        addCriticalFailCount(robotBuildAction, columns, values);
-        addCriticalPassedCount(robotBuildAction, columns, values);
-        addCriticalTotalCount(robotBuildAction, columns, values);
-
-        addOverallCritialPassPercentage(robotBuildAction, columns, values);
-        addOverallPassPercentage(robotBuildAction, columns, values);
-
-        addDuration(robotBuildAction, columns, values);
-        addSuites(robotBuildAction, columns, values);
-
-        Serie.Builder builder = new Serie.Builder(getSeriePrefix());
-        return builder.columns(columns.toArray(new String[columns.size()])).values(values.toArray()).build();
-
+        return pointBuilder.build();
     }
 
-    private void addOverallFailCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_FAILED);
-        values.add(robotBuildAction.getResult().getOverallFailed());
-    }
-    private void addOverallPassedCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_PASSED);
-        values.add(robotBuildAction.getResult().getOverallPassed());
-    }
-    private void addOverallTotalCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_TOTAL);
-        values.add(robotBuildAction.getResult().getOverallTotal());
-    }
-
-    private void addCriticalFailCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_CRITICAL_FAILED);
-        values.add(robotBuildAction.getResult().getCriticalFailed());
-    }
-
-    private void addCriticalPassedCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_CRITICAL_PASSED);
-        values.add(robotBuildAction.getResult().getCriticalPassed());
-    }
-
-    private void addCriticalTotalCount(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_CRITICAL_TOTAL);
-        values.add(robotBuildAction.getResult().getCriticalTotal());
-    }
-
-    private void addOverallCritialPassPercentage(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_CRITICAL_PASS_PERCENTAGE);
-        values.add(robotBuildAction.getCriticalPassPercentage());
-    }
-
-    private void addOverallPassPercentage(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_PASS_PERCENTAGE);
-        values.add(robotBuildAction.getOverallPassPercentage());
-    }
-
-    private void addDuration(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_DURATION);
-        values.add(robotBuildAction.getResult().getDuration());
-    }
-
-    private void addSuites(RobotBuildAction robotBuildAction, List<String> columnNames, List<Object> values) {
-        columnNames.add(RF_SUITES);
-        values.add(robotBuildAction.getResult().getAllSuites().size());
-    }
-
-
-    private List<Serie> generateSubSeries(RobotResult robotResult) {
-        List<Serie> subSeries = new ArrayList<Serie>();
+    private List<Point> generateSubSeries(RobotResult robotResult) {
+        List<Point> subSeries = new ArrayList<Point>();
         for(RobotSuiteResult suiteResult : robotResult.getAllSuites()) {
             subSeries.add(generateSuiteSerie(suiteResult));
 
@@ -144,32 +97,36 @@ public class RobotFrameworkSerieGenerator extends AbstractSerieGenerator {
         return subSeries;
     }
 
-    private Serie generateCaseSerie(RobotCaseResult caseResult) {
-        List<String> columns = new ArrayList<String>();
-        List<Object> values = new ArrayList<Object>();
+    private Point generateCaseSerie(RobotCaseResult caseResult) {
+        Point.Builder pointBuilder = Point.measurement(getCaseSerieName(caseResult))
+            .time(build.getTimeInMillis(), TimeUnit.MILLISECONDS);
 
-        columns.add(RF_CRITICAL_FAILED);
-        values.add(caseResult.getCriticalFailed());
+        addJenkinsBaseInfo(pointBuilder);
 
-        columns.add(RF_CRITICAL_PASSED);
-        values.add(caseResult.getCriticalPassed());
+        pointBuilder.field(RF_CRITICAL_FAILED, caseResult.getCriticalFailed());
+        pointBuilder.field(RF_CRITICAL_PASSED, caseResult.getCriticalPassed());
+        pointBuilder.field(RF_FAILED, caseResult.getFailed());
+        pointBuilder.field(RF_PASSED, caseResult.getPassed());
+        pointBuilder.field(RF_DURATION, caseResult.getDuration());
 
-        columns.add(RF_FAILED);
-        values.add(caseResult.getFailed());
-
-        columns.add(RF_PASSED);
-        values.add(caseResult.getPassed());
-
-        columns.add(RF_DURATION);
-        values.add(caseResult.getDuration());
-
-        Serie.Builder builder = new Serie.Builder(getCaseSerieName(caseResult));
-
+        // build comicolon separated tag list
+        StringBuilder tagListBuilder = new StringBuilder();
         for(String tag : caseResult.getTags()) {
             markTagResult(tag, caseResult);
+            tagListBuilder.append(tag);
+            tagListBuilder.append(";");
+        }
+        // remove training comma
+        String tagList = tagListBuilder.length() > 0 ? tagListBuilder.substring(0, tagListBuilder.length() - 1): "";
+
+        if (tagList.length() > 0) {
+            pointBuilder.tag(RF_TAG_LIST, tagList);
         }
 
-        return builder.columns(columns.toArray(new String[columns.size()])).values(values.toArray()).build();
+        pointBuilder.tag(RF_CASE_NAME, caseResult.getName());
+        pointBuilder.tag(RF_CASE_SUITE, caseResult.getParent().getName());
+
+        return pointBuilder.build();
     }
 
     private final class RobotTagResult {
@@ -185,7 +142,6 @@ public class RobotFrameworkSerieGenerator extends AbstractSerieGenerator {
         protected long duration = 0;
     }
 
-
     private void markTagResult(String tag, RobotCaseResult caseResult) {
         if(tagResults.get(tag) == null)
             tagResults.put(tag, new RobotTagResult(tag));
@@ -199,91 +155,57 @@ public class RobotFrameworkSerieGenerator extends AbstractSerieGenerator {
             tagResult.duration += caseResult.getDuration();
             tagResult.testCases.add(caseResult.getDuplicateSafeName());
         }
-
-
     }
 
-    private Serie generateTagSerie(RobotTagResult tagResult) {
-        List<String> columns = new ArrayList<String>();
-        List<Object> values = new ArrayList<Object>();
+    private Point generateTagSerie(RobotTagResult tagResult) {
 
-        columns.add(RF_CRITICAL_FAILED);
-        values.add(tagResult.criticalFailed);
+        Point.Builder pointBuilder = Point.measurement(getTagSerieName(tagResult))
+            .time(build.getTimeInMillis(), TimeUnit.MILLISECONDS);
 
-        columns.add(RF_CRITICAL_PASSED);
-        values.add(tagResult.criticalPassed);
+        addJenkinsBaseInfo(pointBuilder);
 
-        columns.add(RF_CRITICAL_TOTAL);
-        values.add(tagResult.criticalPassed + tagResult.criticalFailed);
+        pointBuilder.field(RF_CRITICAL_FAILED, tagResult.criticalFailed);
+        pointBuilder.field(RF_CRITICAL_PASSED, tagResult.criticalPassed);
+        pointBuilder.field(RF_CRITICAL_TOTAL, tagResult.criticalPassed + tagResult.criticalFailed);
+        pointBuilder.field(RF_FAILED, tagResult.failed);
+        pointBuilder.field(RF_PASSED, tagResult.passed);
+        pointBuilder.field(RF_TOTAL, tagResult.passed + tagResult.failed);
+        pointBuilder.field(RF_DURATION, tagResult.duration);
+        pointBuilder.tag(RF_TAG_NAME, tagResult.name);
 
-        columns.add(RF_FAILED);
-        values.add(tagResult.failed);
-
-        columns.add(RF_PASSED);
-        values.add(tagResult.passed);
-
-        columns.add(RF_TOTAL);
-        values.add(tagResult.passed + tagResult.failed);
-
-        columns.add(RF_DURATION);
-        values.add(tagResult.duration);
-
-        Serie.Builder builder = new Serie.Builder(getTagSerieName(tagResult));
-
-        return builder.columns(columns.toArray(new String[columns.size()])).values(values.toArray()).build();
+        return pointBuilder.build();
     }
 
-    private Serie generateSuiteSerie(RobotSuiteResult suiteResult) {
-        List<String> columns = new ArrayList<String>();
-        List<Object> values = new ArrayList<Object>();
+    private Point generateSuiteSerie(RobotSuiteResult suiteResult) {
+        Point.Builder pointBuilder = Point.measurement(getSuiteSeriePrefix())
+            .time(build.getTimeInMillis(), TimeUnit.MILLISECONDS);
 
-        addJenkinsBuildNumber(build, columns, values);
-        addJenkinsProjectName(build, columns, values);
+        addJenkinsBaseInfo(pointBuilder);
 
-        columns.add(RF_TESTCASES);
-        values.add(suiteResult.getAllCases().size());
+        pointBuilder.field(RF_TESTCASES, suiteResult.getAllCases().size());
+        pointBuilder.field(RF_CRITICAL_FAILED, suiteResult.getCriticalFailed());
+        pointBuilder.field(RF_CRITICAL_PASSED, suiteResult.getCriticalPassed());
+        pointBuilder.field(RF_CRITICAL_TOTAL, suiteResult.getCriticalTotal());
+        pointBuilder.field(RF_FAILED, suiteResult.getFailed());
+        pointBuilder.field(RF_PASSED, suiteResult.getPassed());
+        pointBuilder.field(RF_TOTAL, suiteResult.getTotal());
+        pointBuilder.field(RF_DURATION, suiteResult.getDuration());
+        pointBuilder.tag(RF_SUITE_NAME, suiteResult.getName());
 
-        columns.add(RF_CRITICAL_FAILED);
-        values.add(suiteResult.getCriticalFailed());
-
-        columns.add(RF_CRITICAL_PASSED);
-        values.add(suiteResult.getCriticalPassed());
-
-        columns.add(RF_CRITICAL_TOTAL);
-        values.add(suiteResult.getCriticalTotal());
-
-        columns.add(RF_FAILED);
-        values.add(suiteResult.getFailed());
-
-        columns.add(RF_PASSED);
-        values.add(suiteResult.getPassed());
-
-        columns.add(RF_TOTAL);
-        values.add(suiteResult.getTotal());
-
-        columns.add(RF_DURATION);
-        values.add(suiteResult.getDuration());
-
-        Serie.Builder builder = new Serie.Builder(getSuiteSerieName(suiteResult));
-        return builder.columns(columns.toArray(new String[columns.size()])).values(values.toArray()).build();
+        return pointBuilder.build();
     }
-
 
 
     private String getTagSerieName(RobotTagResult tagResult) {
-        return getTagSeriePrefix()+"."+tagResult.name;
+        return getTagSeriePrefix();
     }
 
     private String getCaseSerieName(RobotCaseResult caseResult) {
-        return getCaseSeriePrefix()+"."+caseResult.getDuplicateSafeName();
+        return getCaseSeriePrefix();
     }
 
     private String getCaseSeriePrefix() {
         return getSeriePrefix()+".testcase";
-    }
-
-    private String getSuiteSerieName(RobotSuiteResult suiteResult) {
-        return getSuiteSeriePrefix()+"."+suiteResult.getDuplicateSafeName();
     }
 
     private String getTagSeriePrefix() {

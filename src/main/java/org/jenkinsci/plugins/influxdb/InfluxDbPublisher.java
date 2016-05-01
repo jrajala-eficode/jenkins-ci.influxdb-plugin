@@ -11,12 +11,16 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
+import org.influxdb.dto.BatchPoints;
+import org.influxdb.dto.Point;
 import org.jenkinsci.plugins.influxdb.generators.CoberturaSerieGenerator;
 import org.jenkinsci.plugins.influxdb.generators.JenkinsBaseSerieGenerator;
 import org.jenkinsci.plugins.influxdb.generators.RobotFrameworkSerieGenerator;
 import org.jenkinsci.plugins.influxdb.generators.SerieGenerator;
 
 import java.io.IOException;
+import java.io.PrintStream;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 
@@ -24,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author jrajala-eficode
  * @author joachimrodrigues
- * 
+ *
  */
 public class InfluxDbPublisher extends Notifier {
 
@@ -85,7 +89,7 @@ public class InfluxDbPublisher extends Notifier {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see hudson.tasks.Publisher#needsToRunAfterFinalized()
      */
     @Override
@@ -95,7 +99,7 @@ public class InfluxDbPublisher extends Notifier {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see hudson.tasks.BuildStep#getRequiredMonitorService()
      */
     @Override
@@ -105,7 +109,7 @@ public class InfluxDbPublisher extends Notifier {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see hudson.tasks.Notifier#getDescriptor()
      */
     @Override
@@ -115,29 +119,45 @@ public class InfluxDbPublisher extends Notifier {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * hudson.tasks.BuildStepCompatibilityLayer#perform(hudson.model.AbstractBuild
      * , hudson.Launcher, hudson.model.BuildListener)
      */
     @Override
     public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
-
+        PrintStream logger = listener.getLogger();
         Server server = getServer();
         InfluxDB influxDB = openInfluxDb(server);
 
-        JenkinsBaseSerieGenerator jGenerator = new JenkinsBaseSerieGenerator(build);
-        influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, jGenerator.generate());
+        logger.println("Influxdb publisher started");
 
-        CoberturaSerieGenerator cbGenerator = new CoberturaSerieGenerator(build);
+        JenkinsBaseSerieGenerator jGenerator = new JenkinsBaseSerieGenerator(build, logger);
+        BatchPoints jenkinsBatchPoints = BatchPoints.database(server.getDatabaseName())
+                .retentionPolicy("default")
+                .points(jGenerator.generate()).build();
+        influxDB.write(jenkinsBatchPoints);
+
+        CoberturaSerieGenerator cbGenerator = new CoberturaSerieGenerator(build, logger);
         if(cbGenerator.hasReport()) {
-            influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, cbGenerator.generate());
+            BatchPoints coberturaPoints = BatchPoints
+                    .database(server.getDatabaseName())
+                    .retentionPolicy("default")
+                    .points(cbGenerator.generate()).build();
+            influxDB.write(coberturaPoints);
         }
 
-        SerieGenerator rfGenerator = new RobotFrameworkSerieGenerator(build);
+        SerieGenerator rfGenerator = new RobotFrameworkSerieGenerator(build, logger);
         if(rfGenerator.hasReport()) {
-            influxDB.write(server.getDatabaseName(), TimeUnit.MILLISECONDS, rfGenerator.generate());
+            BatchPoints robotFrameworkPoints = BatchPoints
+                    .database(server.getDatabaseName())
+                    .retentionPolicy("default")
+                    .points(rfGenerator.generate())
+                    .build();
+            influxDB.write(robotFrameworkPoints);
         }
+
+        logger.println("Influxdb publisher finished");
 
         return true;
     }
@@ -145,7 +165,4 @@ public class InfluxDbPublisher extends Notifier {
     private InfluxDB openInfluxDb(Server server) {
         return InfluxDBFactory.connect("http://" + server.getHost() + ":" + server.getPort(), server.getUser(), server.getPassword());
     }
-
-
-
 }

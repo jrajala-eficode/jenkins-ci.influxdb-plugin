@@ -1,8 +1,13 @@
 package org.jenkinsci.plugins.influxdb;
 
+import org.influxdb.InfluxDB;
+import org.influxdb.InfluxDBFactory;
+import org.influxdb.dto.Point;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by jrajala on 17.5.2015.
@@ -29,5 +34,6 @@ public class InfluxDbPublisherTest {
         publisher.setSelectedServer(SERVER_2);
         Assert.assertEquals(SERVER_2, publisher.getSelectedServer());
     }
+
 }
 
